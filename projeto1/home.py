@@ -1,10 +1,10 @@
 # pylint: disable=all
 
 import streamlit as st
-import time
 from utils import cria_chain_conversa, PASTA_ARQUIVOS
 
 from dotenv import load_dotenv, find_dotenv
+
 
 _ = load_dotenv(find_dotenv())
 
@@ -47,6 +47,7 @@ def chat_window():
 
     chain = st.session_state['chain']
     memory = chain.memory
+
     mensagens = memory.load_memory_variables({})['chat_history']
 
     container = st.container()
@@ -61,8 +62,8 @@ def chat_window():
         chat = container.chat_message('ai')
         chat.markdown('Gerando resposta...')
 
-        chain.invoke({'question': nova_mensagem})
-        time.sleep(2)
+        resposta = chain.invoke({'question': nova_mensagem})
+        st.session_state['ultima_resposta'] = resposta
         st.rerun()
 
 

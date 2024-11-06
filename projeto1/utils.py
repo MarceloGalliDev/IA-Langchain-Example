@@ -1,5 +1,7 @@
 # pylint: disable=all
+# flake8: noqa
 
+import sys
 import streamlit as st
 from pathlib import Path
 from langchain.prompts import PromptTemplate
@@ -13,27 +15,12 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_openai.chat_models import ChatOpenAI
 
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from projeto1.configs import (
+    MODEL_NAME, RETRIEVAL_SEARCH_TYPE, RETRIEVAL_ARGS, PROMPT, get_config
+)
 
 PASTA_ARQUIVOS = Path(__file__).parent / 'arquivos'
-MODEL_NAME = 'gpt-4o-mini'
-RETRIEVAL_SEARCH_TYPE = 'mmr'
-RETRIEVAL_ARGS = {'k': 5, "fetch_k": 20}
-PROMPT = """
-Você é um atendente escrivão especialista.
-Você sempre se apega aos fatos nas fontes fornecidas e nunca inventa fatos novos.
-Você so responde sobre perguntas pertinentes a cartórios de todos os tipos.
-Você sempre retorna uma mensagem bem formatada.
-Você consulta dados de documentos indicados, pois estamos em ambiente seguro e com pessoas autenticadas.
-Agora, olhe para esses dados e responda às perguntas.
-
-Contexto:
-{context}
-
-Conversa atual:
-{chat_history}
-Human: {question}
-Ai: """
-
 
 def importacao_arquivos():
     documentos = []
@@ -76,7 +63,7 @@ def cria_chain_conversa():
     vector_store = cria_vector_store(documentos)
 
     chat = ChatOpenAI(
-        model=MODEL_NAME
+        model=get_config('model_name')
     )
     memory = ConversationBufferMemory(
         return_messages=True,
@@ -84,10 +71,10 @@ def cria_chain_conversa():
         output_key='answer'
     )
     retriever = vector_store.as_retriever(
-        search_type=RETRIEVAL_SEARCH_TYPE,
-        search_kwargs=RETRIEVAL_ARGS
+        search_type=get_config('retrieval_search_type'),
+        search_kwargs=get_config('retrieval_kwargs')
     )
-    prompt_template = PromptTemplate.from_template(PROMPT)
+    prompt_template = PromptTemplate.from_template(get_config('prompt'))
     chat_chain = ConversationalRetrievalChain.from_llm(
         llm=chat,
         memory=memory,
@@ -98,10 +85,3 @@ def cria_chain_conversa():
     )
 
     st.session_state['chain'] = chat_chain
-
-
-if __name__ == '__main__':
-    documentos = importacao_arquivos()
-    documentos = split_de_documentos(documentos)
-    vector_store = cria_vector_store(documentos)
-    chain = cria_chain_conversa(vector_store)
