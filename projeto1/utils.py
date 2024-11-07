@@ -23,11 +23,11 @@ from projeto1.configs import (
 PASTA_ARQUIVOS = Path(__file__).parent / 'arquivos'
 
 def importacao_arquivos():
+    temp_dir = st.session_state['temp_dir']
     documentos = []
-    for arquivo in PASTA_ARQUIVOS.glob("*.pdf"):
+    for arquivo in Path(temp_dir).glob("*.pdf"):
         loader = PyPDFLoader(str(arquivo))
         documentos_arquivo = loader.load()
-        # adicionando os elementos da primeira lista na segunda
         documentos.extend(documentos_arquivo)
     return documentos
 
