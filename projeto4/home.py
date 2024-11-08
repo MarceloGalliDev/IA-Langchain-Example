@@ -14,13 +14,14 @@ from langchain_core.prompts import MessagesPlaceholder
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain_google_vertexai import ChatVertexAI
-from langchain_core.output_parsers import StrOutputParser
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
-from langchain_huggingface import ChatHuggingFace
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.llms.huggingface_hub import HuggingFaceHub
 from langchain_community.vectorstores.faiss import FAISS
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_google_community import GCSDirectoryLoader
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from dotenv import load_dotenv
@@ -34,9 +35,12 @@ st.header("Converse com os documentos 📚", divider='orange')
 model_class = "gemini" # @param ["hf_hub", "openai", "ollama"]
 
 model_options = {
-    "gemini": [
-        "gemini-1.5-pro-002",
-        "gemini-1.5-pro-002",
+    "vertex-google": [
+        "gemini-1.5-flash-001",
+        # Adicione outros modelos disponíveis para Google VertexAI
+    ],
+    "gemini-google": [
+        "gemini-1.5-pro",
         # Adicione outros modelos disponíveis para Google VertexAI
     ],
     "hf_hub": [
@@ -100,7 +104,19 @@ def model_vertex(model=selected_model, temperature=0.9):
         temperature=temperature,
         max_tokens=2048,
         max_retries=6,
+        timeout=None,
         stop=None,
+    )
+    return llm
+
+def model_google(model=selected_model, temperature=0.9):
+    llm = ChatGoogleGenerativeAI(
+        model=model,
+        temperature=temperature,
+        max_tokens=2048,
+        max_retries=6,
+        stop=None,
+        timeout=None
     )
     return llm
 
@@ -112,8 +128,10 @@ def get_llm(model_class, model_name):
         return model_openai(model=model_name)
     elif model_class == "ollama":
         return model_ollama(model=model_name)
-    elif model_class == "gemini":
+    elif model_class == "vertex-google":
         return model_vertex(model=model_name)
+    elif model_class == "gemini-google":
+        return model_google(model=model_name)
 
 # Inicialize o modelo com base nas seleções
 llm = get_llm(model_class, selected_model)
@@ -152,7 +170,45 @@ def config_retriever(uploads):
         search_type="mmr",
         search_kwargs={"k": 5, "fetch_k": 20}
     )
-    
+
+    return retriever
+
+
+def config_retriever_google():
+    docs = []
+    temp_dir = tempfile.mkdtemp()
+    for file in uploads:
+        temp_filepath = os.path.join(temp_dir, file.name)
+        # acessando a pasta temp
+        with open(temp_filepath, "wb") as f:
+            f.write(file.getvalue())
+
+        # carregando o arquivo pdf
+        loader = PyPDFLoader(temp_filepath)
+        docs.extend(loader.load())
+
+    # divisao em pedaços os textos/split
+    text_splitter = RecursiveCharacterTextSplitter(
+        # vamos criar 1000 documentos
+        chunk_size=1000,
+        chunk_overlap=200,
+        separators=["\n\n", "\n", " ", ""]
+    )
+    splits = text_splitter.split_documents(docs)
+
+    # embeddings, igualmente ao openia
+    embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-m3")
+
+    # vetores de armazenamento
+    vectorstore = FAISS.from_documents(splits, embeddings)
+    vectorstore.save_local('vectorstore/db_faiss')
+
+    # configuração do retriever, influencia nas analises e desempenho
+    retriever = vectorstore.as_retriever(
+        search_type="mmr",
+        search_kwargs={"k": 5, "fetch_k": 20}
+    )
+
     return retriever
 
 
