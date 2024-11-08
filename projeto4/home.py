@@ -135,7 +135,9 @@ def config_retriever(uploads):
     docs = []
     temp_dir = tempfile.mkdtemp()
     for file in uploads:
-        temp_filepath = os.path.join(temp_dir, file.name)
+        cleaned_name = file.name
+        file_name_cleaned = re.sub(r"[ _-]", "", cleaned_name)
+        temp_filepath = os.path.join(temp_dir, file_name_cleaned)
         # Acessando a pasta temp
         with open(temp_filepath, "wb") as f:
             f.write(file.getvalue())
@@ -268,18 +270,12 @@ def config_simple_chat(model_class):
 
     return model_chat
 
-
-
 # Painel lateral - botão upload
 uploads = st.sidebar.file_uploader(
     label="Enviar arquivos",
     type=["pdf"],
     accept_multiple_files=True
 )
-for file_name in uploads:
-    cleaned_name = file_name.name
-    file_name_cleaned = re.sub(r"[ _-]", "", cleaned_name)
-
 
 # Variáveis de sessão
 # Conferindo se existe sessão
