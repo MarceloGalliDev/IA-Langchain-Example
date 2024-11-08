@@ -1,6 +1,7 @@
 # pylint: disable=all
 # flake8: noqa
 
+import re
 import os
 import time
 import faiss
@@ -30,7 +31,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuração do Streamlit
-st.set_page_config(page_title="Inova IA 📚", page_icon="📚")
+st.set_page_config(
+    page_title="Inova IA 📚",
+    page_icon="📚",
+    # menu_items={
+    #     'Get Help': 'https://www.extremelycoolapp.com/help',
+    #     'Report a bug': "https://www.extremelycoolapp.com/bug",
+    #     'About': "# This is a header. This is an *extremely* cool app!"
+    # }
+)
 st.header("Converse com os documentos 📚", divider='orange')
 
 model_class = "openai"  # @param ["hf_hub", "openai", "ollama"]
@@ -259,12 +268,18 @@ def config_simple_chat(model_class):
 
     return model_chat
 
+
+
 # Painel lateral - botão upload
 uploads = st.sidebar.file_uploader(
     label="Enviar arquivos",
     type=["pdf"],
     accept_multiple_files=True
 )
+for file_name in uploads:
+    cleaned_name = file_name.name
+    file_name_cleaned = re.sub(r"[ _-]", "", cleaned_name)
+
 
 # Variáveis de sessão
 # Conferindo se existe sessão
