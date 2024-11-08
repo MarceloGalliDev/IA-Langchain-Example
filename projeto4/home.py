@@ -145,10 +145,6 @@ def config_retriever(uploads):
         separators=["\n\n", "\n", " ", ""]
     )
     splits = text_splitter.split_documents(docs)
-    
-    if not splits:
-        st.warning("Nenhum texto encontrado nos documentos carregados.")
-        return None
 
     # embeddings, igualmente ao openia
     embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-m3")
@@ -321,9 +317,6 @@ if "docs_list" not in st.session_state:
 if "retriever" not in st.session_state:
     st.session_state.retriever = None
 
-if "last_uploads" not in st.session_state:
-    st.session_state.last_uploads = []
-
 # historicos de mensagens
 for message in st.session_state.chat_history:
     if isinstance(message, AIMessage):
@@ -347,19 +340,21 @@ if user_query is not None and user_query != "":
 
     # resposta da IA
     with st.chat_message("AI"):
-        if uploads and st.session_state.last_uploads != uploads:
-            st.session_state.last_uploads = uploads
-            st.session_state.retriever = config_retriever(uploads)
-            st.session_state.docs_list = uploads
+        if uploads:
+            # Update documents and retriever if uploads have changed
+            if st.session_state.docs_list != uploads:
+                st.session_state.docs_list = uploads
+                st.session_state.retriever = config_retriever(uploads)
 
             # Only proceed if retriever is successfully created
             if st.session_state.retriever is not None:
                 rag_chain = model_rag(model_class, st.session_state.retriever)
-                result = rag_chain.stream({
+                result = rag_chain.invoke({
                     "input": user_query,
                     "chat_history": st.session_state.chat_history
                 })
                 resp = result['answer']
+                st.write(resp)
 
                 # Display sources
                 sources = result['context']
@@ -374,27 +369,9 @@ if user_query is not None and user_query != "":
                 # se retrieve for none retorna para o chat normal
                 resp = st.write_stream(model_chat(user_query, st.session_state.chat_history, model_class))
         else:
-            if st.session_state.retriever:
-                rag_chain = model_rag(model_class, st.session_state.retriever)
-                result = rag_chain.stream({
-                    "input": user_query,
-                    "chat_history": st.session_state.chat_history
-                })
-                resp = result['answer']
+            # sem uploads procede pro chat normal
+            resp = st.write_stream(model_chat(user_query, st.session_state.chat_history, model_class))
 
-                # Display sources
-                sources = result['context']
-                for idx, doc in enumerate(sources):
-                    source = doc.metadata['source']
-                    file = os.path.basename(source)
-                    page = doc.metadata.get('page', 'Página não especificada')
-                    ref = f":link: Fonte {idx}: *{file} - p. {page}*"
-                    with st.popover(ref):
-                        st.caption(doc.page_content)
-            else:
-                resp = model_chat(user_query, st.session_state.chat_history, model_class)
-
-        st.write_stream(resp)
         st.session_state.chat_history.append(AIMessage(content=resp))
 
 
@@ -402,4 +379,3 @@ end = time.time()
 elapsed_time = end - start
 formatted_time = time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
 print("Tempo:", formatted_time)
-st.write(f"Tempo: {formatted_time}")
