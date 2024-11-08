@@ -29,16 +29,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# config streamlit
+# Configuração do Streamlit
 st.set_page_config(page_title="Inova IA 📚", page_icon="📚")
 st.header("Converse com os documentos 📚", divider='orange')
 
-model_class = "openai" # @param ["hf_hub", "openai", "ollama"]
+model_class = "openai"  # @param ["hf_hub", "openai", "ollama"]
 
 model_options = {
     "openai": [
         "gpt-3.5-turbo",
-        "gpt-4o",
+        "gpt-4o-mini",
         # Adicione outros modelos disponíveis para OpenAI
     ],
     "gemini": [
@@ -105,7 +105,6 @@ def model_vertex(model=selected_model, temperature=0.5):
     )
     return llm
 
-
 # Função para configurar o LLM com base na seleção do usuário
 def get_llm(model_class, model_name):
     if model_class == "hf_hub":
@@ -120,7 +119,6 @@ def get_llm(model_class, model_name):
 # Inicialize o modelo com base nas seleções
 llm = get_llm(model_class, selected_model)
 
-
 def config_retriever(uploads):
     if not uploads:
         return None
@@ -129,31 +127,35 @@ def config_retriever(uploads):
     temp_dir = tempfile.mkdtemp()
     for file in uploads:
         temp_filepath = os.path.join(temp_dir, file.name)
-        # acessando a pasta temp
+        # Acessando a pasta temp
         with open(temp_filepath, "wb") as f:
             f.write(file.getvalue())
 
-        # carregando o arquivo pdf
+        # Carregando o arquivo PDF
         loader = PyPDFLoader(temp_filepath)
         docs.extend(loader.load())
 
-    # divisao em pedaços os textos/split
+    # Divisão em pedaços os textos/split
     text_splitter = RecursiveCharacterTextSplitter(
-        # vamos criar 1000 documentos
+        # Vamos criar 1000 documentos
         chunk_size=1000,
         chunk_overlap=200,
         separators=["\n\n", "\n", " ", ""]
     )
     splits = text_splitter.split_documents(docs)
 
-    # embeddings, igualmente ao openia
+    if not splits:
+        st.warning("Nenhum texto encontrado nos documentos carregados.")
+        return None
+
+    # Embeddings, igualmente ao OpenAI
     embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-m3")
 
-    # vetores de armazenamento
+    # Vetores de armazenamento
     vectorstore = FAISS.from_documents(splits, embeddings)
     vectorstore.save_local('vectorstore/db_faiss')
 
-    # configuração do retriever, influencia nas analises e desempenho
+    # Configuração do retriever, influencia nas análises e desempenho
     retriever = vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={"k": 5, "fetch_k": 20}
@@ -161,46 +163,7 @@ def config_retriever(uploads):
 
     return retriever
 
-
-def config_retriever_google():
-    docs = []
-    temp_dir = tempfile.mkdtemp()
-    for file in uploads:
-        temp_filepath = os.path.join(temp_dir, file.name)
-        # acessando a pasta temp
-        with open(temp_filepath, "wb") as f:
-            f.write(file.getvalue())
-
-        # carregando o arquivo pdf
-        loader = PyPDFLoader(temp_filepath)
-        docs.extend(loader.load())
-
-    # divisao em pedaços os textos/split
-    text_splitter = RecursiveCharacterTextSplitter(
-        # vamos criar 1000 documentos
-        chunk_size=1000,
-        chunk_overlap=200,
-        separators=["\n\n", "\n", " ", ""]
-    )
-    splits = text_splitter.split_documents(docs)
-
-    # embeddings, igualmente ao openia
-    embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-m3")
-
-    # vetores de armazenamento
-    vectorstore = FAISS.from_documents(splits, embeddings)
-    vectorstore.save_local('vectorstore/db_faiss')
-
-    # configuração do retriever, influencia nas analises e desempenho
-    retriever = vectorstore.as_retriever(
-        search_type="mmr",
-        search_kwargs={"k": 5, "fetch_k": 20}
-    )
-
-    return retriever
-
-
-def model_rag(model_class, retriever):
+def config_rag_chain(model_class, retriever):
     if model_class == "hf_hub":
         llm = model_hf_hub()
     elif model_class == "openai":
@@ -210,15 +173,15 @@ def model_rag(model_class, retriever):
     elif model_class == "gemini":
         llm = model_vertex()
 
-    # definição de prompt
+    # Definição de prompt
     if model_class.startswith("hf"):
         token_s, token_e = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>", "<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
     else:
         token_s, token_e = "", ""
 
-    # prompt de contextualização
-    context_q_system_prompt = "Given the following chat history and the follow-up question which might reference context in the chat history, formulate a standalone question question which can be understood without the chat history, Do NOT answer the question, just reformulate it if needed and otherwise return it as is."
-    # adicionando o token de inicio
+    # Prompt de contextualização
+    context_q_system_prompt = "Given the following chat history and the follow-up question which might reference context in the chat history, formulate a standalone question which can be understood without the chat history. Do NOT answer the question, just reformulate it if needed and otherwise return it as is."
+    # Adicionando o token de início
     context_q_system_prompt = token_s + context_q_system_prompt
     context_q_user_prompt = "Question: {input}" + token_e
     context_q_prompt = ChatPromptTemplate.from_messages(
@@ -229,7 +192,7 @@ def model_rag(model_class, retriever):
         ]
     )
     
-    # chain contextualização
+    # Chain de contextualização
     history_aware_retriever = create_history_aware_retriever(
         llm=llm,
         retriever=retriever,
@@ -238,11 +201,11 @@ def model_rag(model_class, retriever):
 
     qa_prompt_template = """Você é um atendente escrivão especialista.
     Você sempre fala fatos nas fontes fornecidas e nunca inventa fatos novos.
-    Você so responde sobre perguntas pertinentes a cartórios de todos os tipos e sobre casos que envolvem direito, como leis e afins.
+    Você só responde sobre perguntas pertinentes a cartórios de todos os tipos e sobre casos que envolvem direito, como leis e afins.
     Você sempre retorna uma mensagem concisa.
-    Você pode consultar dados de documentos indicados, podendo ser arquivos pdf, txt ou consultas ao big query.
-    Utilize o contexto para responder as perguntas do usuário, caso não tenha contexto, análise a parte da documentação indica para iniciar o contexto.
-    Caso não consiga responder ou gerar um resposta, informe que não conseguiu.
+    Você pode consultar dados de documentos indicados, podendo ser arquivos pdf, txt ou consultas ao BigQuery.
+    Utilize o contexto para responder as perguntas do usuário, caso não tenha contexto, analise a parte da documentação indicada para iniciar o contexto.
+    Caso não consiga responder ou gerar uma resposta, informe que não conseguiu.
     Você sempre responde no idioma português do Brasil.
     Agora, olhe para esses dados e responda às perguntas. \n\n
     Pergunta: {input} \n
@@ -255,69 +218,71 @@ def model_rag(model_class, retriever):
 
     return rag_chain
 
+# Função para configurar o chat sem RAG
+def config_simple_chat(model_class):
+    def model_chat(user_query, chat_history, model_class):
+        # Inicialize o modelo apropriado
+        if model_class == "hf_hub":
+            llm = model_hf_hub()
+        elif model_class == "openai":
+            llm = model_openai()
+        elif model_class == "ollama":
+            llm = model_ollama()
+        elif model_class == "gemini":
+            llm = model_vertex()
 
-# recebe a query do usuario, o historico da sessao e o model LLM
-def model_chat(user_query, chat_history, model_class ):
-    if model_class == "hf_hub":
-        llm = model_hf_hub()
-    elif model_class == "openai":
-        llm = model_openai()
-    elif model_class == "ollama":
-        llm = model_ollama()
-    elif model_class == "gemini":
-        llm = model_vertex()
+        system_prompt = """
+            Você é um atendente escrivão especialista.
+            Você sempre fala fatos nas fontes fornecidas e nunca inventa fatos novos.
+            Você só responde sobre perguntas pertinentes a cartórios de todos os tipos e sobre casos que envolvem direito, como leis e afins.
+            Você sempre responde no idioma português do Brasil.
+        """
+        
+        if model_class.startswith("hf"):
+            user_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n{input}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
+        else:
+            user_prompt = "{input}"
 
-    system_prompt = """
-        Você é um atendente escrivão especialista.
-        Você sempre fala fatos nas fontes fornecidas e nunca inventa fatos novos.
-        Você so responde sobre perguntas pertinentes a cartórios de todos os tipos e sobre casos que envolvem direito, como leis e afins.
-        Você sempre responde no idioma português do Brasil.
-    """
-    
-    if model_class.startswith("hf"):
-        user_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n{input}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
-    else:
-        user_prompt = "{input}"
+        # Cria o template de prompt
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            MessagesPlaceholder(variable_name="chat_history"),  # Usado para armazenar o histórico das conversas
+            ("user", user_prompt)
+        ])
+        
+        chain = prompt_template | llm | StrOutputParser()
+        
+        return chain.stream({
+            "chat_history": chat_history,
+            "input": user_query
+        })
 
-    # aqui criamos a combinação do prompt
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        MessagesPlaceholder(variable_name="chat_history"), # usado para armazenar o historico das conversas
-        ("user", user_prompt)
-    ])
-    
-    chain = prompt_template | llm | StrOutputParser()
-    
-    return chain.stream({
-        "chat_history": chat_history,
-        "input": user_query
-    })
+    return model_chat
 
-
-# painel lateral botao upload
+# Painel lateral - botão upload
 uploads = st.sidebar.file_uploader(
     label="Enviar arquivos",
     type=["pdf"],
     accept_multiple_files=True
 )
-# if not uploads:
-#     st.info("Por favor, envie algum arquivo para continuar")
-#     st.stop()
 
-# variáveis de sessão
-# conferindo se existe sessão
+# Variáveis de sessão
+# Conferindo se existe sessão
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [
         AIMessage(content="Olá, sou seu assistente virtual! Como posso ajuda-lo?")
     ]
 
 if "docs_list" not in st.session_state:
-    st.session_state.docs_list = None
+    st.session_state.docs_list = []
 
 if "retriever" not in st.session_state:
     st.session_state.retriever = None
 
-# historicos de mensagens
+if "last_uploads" not in st.session_state:
+    st.session_state.last_uploads = []
+
+# Histórico de mensagens
 for message in st.session_state.chat_history:
     if isinstance(message, AIMessage):
         with st.chat_message("AI"):
@@ -326,56 +291,88 @@ for message in st.session_state.chat_history:
         with st.chat_message("Human"):
             st.write(message.content)
 
-# conversação
+# Conversação
 start = time.time()
 user_query = st.chat_input("Digite sua mensagem...")
 
-# Conversational logic
+# Função para formatar o tempo
+def format_elapsed_time(seconds):
+    return time.strftime("%H:%M:%S", time.gmtime(seconds))
+
 if user_query is not None and user_query != "":
     st.session_state.chat_history.append(HumanMessage(content=user_query))
     
-    # input do user
     with st.chat_message("Human"):
         st.markdown(user_query)
 
-    # resposta da IA
+    # Atualizamos os documentos se houver novos uploads
     with st.chat_message("AI"):
-        if uploads:
-            # Update documents and retriever if uploads have changed
-            if st.session_state.docs_list != uploads:
-                st.session_state.docs_list = uploads
-                st.session_state.retriever = config_retriever(uploads)
+        # Detecta se houve novos uploads
+        if uploads and st.session_state.last_uploads != uploads:
+            st.session_state.last_uploads = uploads
+            st.session_state.retriever = config_retriever(uploads)
+            st.session_state.docs_list = uploads
 
-            # Only proceed if retriever is successfully created
-            if st.session_state.retriever is not None:
-                rag_chain = model_rag(model_class, st.session_state.retriever)
+            if st.session_state.retriever:
+                rag_chain = config_rag_chain(model_class, st.session_state.retriever)
                 result = rag_chain.invoke({
                     "input": user_query,
                     "chat_history": st.session_state.chat_history
                 })
-                resp = result['answer']
-                st.write(resp)
-
-                # Display sources
+                
+                answer = result['answer']
+                resp = st.write(answer)
+                
                 sources = result['context']
                 for idx, doc in enumerate(sources):
                     source = doc.metadata['source']
                     file = os.path.basename(source)
                     page = doc.metadata.get('page', 'Página não especificada')
+
                     ref = f":link: Fonte {idx}: *{file} - p. {page}*"
                     with st.popover(ref):
                         st.caption(doc.page_content)
+
+                # Adiciona a resposta ao histórico
+                st.session_state.chat_history.append(AIMessage(content=answer))
             else:
-                # se retrieve for none retorna para o chat normal
-                resp = st.write_stream(model_chat(user_query, st.session_state.chat_history, model_class))
+                # Fallback caso não haja retriever
+                resp = "Documentos carregados, mas houve um problema ao processá-los."
         else:
-            # sem uploads procede pro chat normal
-            resp = st.write_stream(model_chat(user_query, st.session_state.chat_history, model_class))
+            # Sem novos uploads, verifica se já existe um retriever configurado
+            if st.session_state.retriever:
+                rag_chain = config_rag_chain(model_class, st.session_state.retriever)
+                result = rag_chain.invoke({
+                    "input": user_query,
+                    "chat_history": st.session_state.chat_history
+                })
+                
+                answer = result['answer']
+                resp = st.write(answer)
 
-        st.session_state.chat_history.append(AIMessage(content=resp))
+                sources = result['context']
+                for idx, doc in enumerate(sources):
+                    source = doc.metadata['source']
+                    file = os.path.basename(source)
+                    page = doc.metadata.get('page', 'Página não especificada')
 
+                    ref = f":link: Fonte {idx}: *{file} - p. {page}*"
+                    with st.popover(ref):
+                        st.caption(doc.page_content)
 
-end = time.time()
-elapsed_time = end - start
-formatted_time = time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
-print("Tempo:", formatted_time)
+                # Adiciona a resposta ao histórico
+                st.session_state.chat_history.append(AIMessage(content=answer))
+            else:
+                # Sem retriever, realiza chat normal
+                chat_function = config_simple_chat(model_class)
+                resp = chat_function(user_query, st.session_state.chat_history, model_class)
+                # Exibe a resposta
+                full_join = st.write_stream(resp)
+                full_response = "".join(full_join)
+                st.session_state.chat_history.append(AIMessage(content=full_response))
+
+    # Medir e exibir o tempo de resposta
+    end = time.time()
+    elapsed_time = end - start
+    formatted_time = format_elapsed_time(elapsed_time)
+    st.write(f"Tempo: {formatted_time}")
