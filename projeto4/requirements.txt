@@ -118,4 +118,3 @@ SQLAlchemy>=2.0.35
 streamlit>=1.40.0
 tokenizers>=0.20.3
 transformers>=4.46.2
-watchdog>=6.0.0
