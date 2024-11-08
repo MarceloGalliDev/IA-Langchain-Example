@@ -58,3 +58,6 @@ toolbarMode = "auto"
 # `pages/` directory.
 # Default: true
 showSidebarNavigation = true
+
+[theme]
+base="dark"
